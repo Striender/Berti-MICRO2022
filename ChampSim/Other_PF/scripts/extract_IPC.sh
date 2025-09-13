@@ -1,79 +1,68 @@
-#log2_region_size=14
+#!/bin/bash
 
-#while [ $log2_region_size -lt 21 ]
-#do 
-#	degree=3
+# ==============================
+# IPC Extraction Script (non-interactive)
+# Usage: ./extract_ipc.sh <SUBDIR> <ExpNo> <IPC_SUBDIR>
+# ==============================
 
-#	while [ $degree -lt 9 ]
-#	do
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <RESULTS_SUBDIR> <ExpNo> "
+    exit 1
+fi
 
-#		a=$(ls ../results_1M | grep "ip_stride_region-"$log2_region_size"-"$degree"-no-no")
-#		i=0
-#		for x in $a
-#		do
-#			i=`expr $i + 1`
-#			echo $i
-#			cat "../results_1M/$x" | grep "CPU 0 cumulative IPC"  | awk 'NR==1' | awk -F ' ' '{print $5}' >> "../Statistics/IP_stride_region_"$log2_region_size"_"$degree".txt"
-
-#		done
-
-#		degree=`expr $degree + 1`
-#	done
-#	log2_region_size=`expr $log2_region_size + 1`
-#done
-
-#num_ips=2
-dist=0
-
-Predictor=hashed_perceptron
-
-#l1ipref=CURRENTLY SETTING STATIC.
-l1dpref=(no) #bingo_64KB bingo_48KB bingo_34KB bingo_18KB bingo_11KB bingo_8KB bingo_5KB final_ipcp_1024entr final_ipcp_512entr final_ipcp_256entr final_ipcp_128entr final_ipcp_64entr) #idealL1Dpref no final_ipcp final_ipcp final_ipcp no no no ipcp_crossPages ipcp_crossPages bingo_dpc3)
-l2cpref=(no) # no no no no no no no no no no no) # no no ipcp_practical spp_tuned_aggr spp_tuned_aggr spp ppf no spp_tuned_aggr no)
-llcpref=(no) # no no no no no no no no no no no)
-
-#tlb prefetchers
-itlb_pref=(no) # no no no no no no no no no no no)
-dtlb_pref=(no) # no no no no no no no no no no no)
-stlb_pref=(no) # no no no no no no no no no no no)
+SUBDIR=$1
+ExpNo=$2
 
 
-llcrepl=srrip-drrip
+RESULT_DIR="../results/$SUBDIR/$ExpNo"
+OUT_DIR="../Statistics/IPC_all/$SUBDIR"
+OUT_FILE="$OUT_DIR/IPC_value_${ExpNo}.txt"
 
-numofpref=${#l1dpref[@]}
+# Check if the result directory exists
+if [ ! -d "$RESULT_DIR" ]; then
+    echo "❌ Error: Directory '$RESULT_DIR' does not exist. Please check the name and try again."
+    exit 1
+fi
 
+# Create output directory if it doesn't exist
+mkdir -p "$OUT_DIR"
 
-#while [ $dist -lt 1 ]
-for((i=0; i<$numofpref; i++))
-       do
+# Ensure output file exists
+touch "$OUT_FILE"
 
-               #a=$(ls ../results_5M | grep "ipcp_crossPages_distance-dist"$dist"-no-no-no-no-no")
-	       a=$(ls ../results_5M | grep "mana_32KB-${l1dpref[i]}-${l2cpref[i]}-${llcpref[i]}-${itlb_pref[i]}-${dtlb_pref[i]}-${stlb_pref[i]}")
-	      # echo $a
+# Temporary file for updated results
+TEMP_FILE=$(mktemp)
 
-	       b=$(ls ../results_10M | grep "6*-no-${l1dpref[i]}-${l2cpref[i]}-${llcpref[i]}-${itlb_pref[i]}-${dtlb_pref[i]}-${stlb_pref[i]}")
-	       #echo $b
-	       #exit
-	       echo "For IPC client-server:"
-               j=0
-               for x in $a
-               do
-                       j=`expr $j + 1`
-                       echo $j
-                       cat "../results_5M/$x" | grep "CPU 0 cumulative IPC"  | awk 'NR==1' | awk -F ' ' '{print $5}' >> "../Statistics/IPC_traces/5M-${l1dpref[i]}-${l2cpref[i]}-${llcpref[i]}-${itlb_pref[i]}-${dtlb_pref[i]}-${stlb_pref[i]}.txt"
+# Copy old results into temp
+cp "$OUT_FILE" "$TEMP_FILE"
 
-               done
+# Process each result file
+for file in "$RESULT_DIR"/*; do
+    fname=$(basename "$file")
 
-	       echo "For SPEC2017:"
-	       j=0
-	       for x in $b
-	       do
-		       j=`expr $j + 1`
-		       echo $j
-		       cat "../results_10M/$x" | grep "CPU 0 cumulative IPC"  | awk 'NR==1' | awk -F ' ' '{print $5}' >> "../Statistics/SPEC2017/10M-${l1dpref[i]}-${l2cpref[i]}-${llcpref[i]}-${itlb_pref[i]}-${dtlb_pref[i]}-${stlb_pref[i]}.txt"
+    # Extract IPC
+    ipc=$(grep "CPU 0 cumulative IPC" "$file" | awk '{print $5}')
 
-	       done
+    # If file entry already exists in OUT_FILE
+    if grep -q "^$fname" "$OUT_FILE"; then
+        existing_ipc=$(grep "^$fname" "$OUT_FILE" | awk '{print $2}')
+        
+        if [ -z "$existing_ipc" ] || [ "$existing_ipc" = " " ]; then
+            echo "Updating $fname with new IPC $ipc"
+            sed -i "s/^$fname:.*/$fname: $ipc/" "$TEMP_FILE"
+        else
+            echo "Skipping $fname (already exists with IPC)"
+        fi
+    else
+        echo "Adding $fname $ipc"
+        echo "$fname: $ipc" >> "$TEMP_FILE"
+    fi
+done
 
-               #dist=`expr $dist + 1`
-       done
+# Sort results by trace name
+sort -k1,1 "$TEMP_FILE" -o "$TEMP_FILE"
 
+# Replace old file with updated temp
+mv "$TEMP_FILE" "$OUT_FILE"
+
+echo "✅ IPC extraction for '$SUBDIR' updated and sorted. Stored in $OUT_FILE"

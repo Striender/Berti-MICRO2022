@@ -8,7 +8,7 @@ inc = inc
 
 debug = 1
 
-CFlags = -Wall -g -std=c++11 -O3
+CFlags = -Wall -g -std=c++11 -O0
 LDFlags = -static
 libs =
 libDir =
@@ -16,7 +16,7 @@ libDir =
 
 #************************ DO NOT EDIT BELOW THIS LINE! ************************
 
-ifeq ($(debug),1)
+ifeq ($(debug),1)4
 	debug=-g
 else
 	debug=
